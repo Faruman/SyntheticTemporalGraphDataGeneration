@@ -1,0 +1,9 @@
+.idea
+.venv
+TGSynthBench
+
+#ensure data is not leaked
+*raw*
+*.csv
+*wandb*
+*bench*
