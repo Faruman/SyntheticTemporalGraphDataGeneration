@@ -461,6 +461,8 @@ class WGANGP_DSR(WGANGP):
         # Sample
         data = []
         generated_samples = 0
+        max_rounds = 1000
+        rounds = 0
         while generated_samples < n:
             mean = torch.zeros(self._batch_size, self._embedding_dim)
             std = mean + 1
@@ -492,6 +494,12 @@ class WGANGP_DSR(WGANGP):
 
             data.append(fakeact)
             generated_samples += fakeact.shape[0]
+
+            rounds += 1
+
+            if rounds > max_rounds:
+                print("While Sampling Loop stopped early. (Num_samples: {})".format(generated_samples))
+                break
 
         data = np.concatenate(data, axis=0)
         data = data[:n]

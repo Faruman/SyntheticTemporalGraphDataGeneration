@@ -18,6 +18,23 @@ import os
 import pickle
 import joblib
 
+def truncate_sequence(group, max_len, min_len, id_column):
+    if len(group) <= max_len and len(group) >= min_len:
+        group[id_column] = group[id_column].apply(lambda x: f"{x}_0")
+        return group
+    elif len(group) > max_len:
+        out = pd.DataFrame(columns=group.columns)
+        for i in range(len(group) // max_len):
+            seq = group.sample(min(len(group), max_len))
+            seq[id_column] = seq[id_column].apply(lambda x: f"{x}_{i}")
+            if out.empty:
+                out = seq
+            else:
+                out = pd.concat((out, seq))
+            group = group.drop(seq.index)
+        return out
+    else:
+        return pd.DataFrame(columns=group.columns)
 
 class SeqSynthModel:
     def __init__(self, node_embedding_dim= 2, device= None, verbose= False):
@@ -135,7 +152,7 @@ class SeqSynthModel:
         self.embeddings = embs  # shape: (num_nodes, embedding_dim)
         self.data_preprocessed = True
 
-    def fit_synth_model(self, model, model_parameters, data, edge_index_cols, model_type= "sdv"):
+    def fit_synth_model(self, model, model_parameters, data, edge_index_cols, model_implementation= "sdv", model_type= "single_table"):
         data = data.copy(deep=True)
 
         assert self.data_preprocessed, "Data is not preprocessed, run fit_data_preprocess() first"
@@ -146,9 +163,31 @@ class SeqSynthModel:
             data = data.drop(columns=[col])
 
         if "context_columns" in model_parameters:
-            model_parameters["context_columns"] = model_parameters["context_columns"] + [f"{col}_WYS_{i}" for i in range(self.node_embedding_dim) for col in edge_index_cols]
+            context_columns = model_parameters["context_columns"] + [f"{col}_WYS_{i}" for i in range(self.node_embedding_dim) for col in edge_index_cols]
+            del model_parameters["context_columns"]
 
-        if model_type == "sdv":
+        if model_implementation == "sdv" and model_type == "sequential":
+            metadata = SingleTableMetadata()
+            metadata.detect_from_dataframe(data)
+
+            data["timestamp"] = pd.to_datetime(data["timestamp"]).astype('int64') // 10 ** 9
+            mi = pd.MultiIndex.from_frame(data[context_columns])
+            data['source_id'] = pd.factorize(mi)[0]
+
+            metadata = SingleTableMetadata()
+            metadata.detect_from_dataframe(data)
+            metadata.update_column(column_name='source_id', sdtype='id')
+            metadata.update_column(column_name='timestamp', sdtype='numerical')
+            metadata.set_sequence_key(column_name='source_id')
+            metadata.set_sequence_index(column_name='timestamp')
+            metadata.set_primary_key(None)
+
+            data = data.groupby(context_columns).progress_apply(truncate_sequence, max_len=30, min_len=model_parameters["min_number_edges_per_node"], id_column="source_id").reset_index(drop=True)
+            del model_parameters["min_number_edges_per_node"]
+
+            self.model = model(metadata, **model_parameters)
+
+        elif model_implementation == "sdv":
             metadata = SingleTableMetadata()
             metadata.detect_from_dataframe(data)
             self.model = model(metadata, **model_parameters)

@@ -29,7 +29,6 @@ context_columns = ['PCACCT1', 'PCACCT2', 'PCACCT3', 'PCACCT4', 'PCACCT5', 'PCACC
 real_data = pd.read_csv("./temp/train_data.csv", index_col=False)
 
 real_data["timestamp"] = pd.to_datetime(real_data["timestamp"]).astype('int64') // 10**9
-
 mi = pd.MultiIndex.from_frame(real_data[context_columns])
 real_data['source_id'] = pd.factorize(mi)[0]
 

@@ -5,3 +5,4 @@ torch==2.5.1
 torch_geometric
 sdv==1.14.0
 category_encoders == 2.6.3
+wandb==0.19.10
